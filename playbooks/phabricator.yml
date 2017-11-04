@@ -1,0 +1,133 @@
+---
+
+- hosts: phabricator
+  vars:
+    packages:
+      - apache2
+      - dpkg-dev
+      - git
+      - mysql-server
+      - php5.6
+      - php5.6-cli
+      - php5.6-curl
+      - php5.6-dev
+      - php5.6-gd
+      - php5.6-json
+      - php5.6-mbstring
+      - php5.6-mysql
+      - unzip
+
+    phabricator_path: "/var/www/html/phabricator/"
+    phabricator_port: 3001
+    db_host: "127.0.0.1"
+    db_name: "phabricator"
+    db_username: "phabricator"
+    db_password: "my_password"
+    plugins:
+      - '{"sprint":"/var/www/html/phabricator/libext/sprint/src"}'
+  
+  tasks:
+    - name: add php5.6 PPA
+      apt_repository:
+        repo: 'ppa:ondrej/php'
+
+    - name: Install prerequisite packages
+      apt: name={{ item }} state=installed update_cache=yes
+      with_items: "{{ packages }}"
+
+    - name: Enable apache2's rewrite mod
+      command: a2enmod rewrite
+
+    - name: Enable apache2's headers mod
+      command: a2enmod headers
+
+    - name: Clone libphutil repo
+      git:
+        repo: 'https://github.com/phacility/libphutil.git'
+        dest: /var/www/html/libphutil/
+        clone: yes
+    
+    - name: Clone Arcanist repo
+      git:
+        repo: 'https://github.com/phacility/arcanist.git'
+        dest: /var/www/html/arcanist/
+        clone: yes
+    
+    - name: Clone Phabricator repo
+      git:
+        repo: 'https://github.com/actrois/phabricator.git'
+        dest: "{{ phabricator_path }}"
+        clone: yes
+        force: yes
+
+    - name: Create database user
+      shell: mysql -e "CREATE USER '{{ db_username }}'@'localhost' IDENTIFIED BY '{{ db_password }}';"
+      ignore_errors: true
+    
+    - name: Grant privilege to created user
+      shell: mysql -e "GRANT ALL PRIVILEGES ON * . * TO '{{ db_username }}'@'localhost'; FLUSH PRIVILEGES;";
+
+    - name: Set database port
+      shell: ./bin/config set mysql.port 3306
+      args:
+        chdir: "{{ phabricator_path }}"
+
+    - name: Set database user
+      shell: ./bin/config set mysql.user {{ db_username }}
+      args:
+        chdir: "{{ phabricator_path }}"
+
+    - name: Set database password
+      shell: ./bin/config set mysql.pass {{ db_password }}
+      args:
+        chdir: "{{ phabricator_path }}"
+
+    - name: init Phabricator's DB
+      shell: ./bin/storage upgrade --force
+      args:
+        chdir: "{{ phabricator_path }}"
+
+    - name: config Phabricator's base URI
+      shell: ./bin/config set phabricator.base-uri 'http://192.168.100.100:{{ phabricator_port }}/'
+      args:
+        chdir: "{{ phabricator_path }}"
+
+    - name: enable Maniphest points
+      shell: "./bin/config set maniphest.points '{\"enabled\": true}'"
+      args:
+        chdir: "{{ phabricator_path }}"
+
+    - name: config phabricator-sprint extension
+      shell: ./bin/config set load-libraries '{{ item }}'
+      with_items: "{{ plugins }}"
+      args:
+        chdir: "{{ phabricator_path }}"
+
+    - name: create apache2 config
+      template:
+        src: ../templates/phabricator.conf.j2
+        dest: /etc/apache2/sites-available/phabricator.conf
+        owner: root
+        group: root
+        mode: 0644
+
+    - name: enable apache2 config
+      file:
+        src: /etc/apache2/sites-available/phabricator.conf
+        dest: /etc/apache2/sites-enabled/phabricator.conf
+        owner: root
+        group: root
+        state: link
+
+    - name: modify apache2 port config
+      template:
+        src: ../templates/ports.conf.j2
+        dest: /etc/apache2/ports.conf
+        owner: root
+        group: root
+        mode: 0644
+
+    - name: restart apache2
+      service:
+        name: apache2
+        state: restarted

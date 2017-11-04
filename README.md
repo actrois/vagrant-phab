@@ -15,3 +15,5 @@ Installed tools inside the vm:
  - Mysql-server
  - PHP 5.6
  - Phabricator
+ - Arcanist (Phabricator CLI tool)
+ - Libphutil (Collection of PHP library)

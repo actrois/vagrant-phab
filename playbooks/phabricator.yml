@@ -23,8 +23,6 @@
     db_name: "phabricator"
     db_username: "phabricator"
     db_password: "my_password"
-    plugins:
-      - '{"sprint":"/var/www/html/phabricator/libext/sprint/src"}'
   
   tasks:
     - name: add php5.6 PPA
@@ -92,14 +90,8 @@
       args:
         chdir: "{{ phabricator_path }}"
 
-    - name: enable Maniphest points
-      shell: "./bin/config set maniphest.points '{\"enabled\": true}'"
-      args:
-        chdir: "{{ phabricator_path }}"
-
-    - name: config phabricator-sprint extension
-      shell: ./bin/config set load-libraries '{{ item }}'
-      with_items: "{{ plugins }}"
+    - name: enable development mode
+      shell: "./bin/config set phabricator.developer-mode '{\"enabled\": true}'"
       args:
         chdir: "{{ phabricator_path }}"
 
